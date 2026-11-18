@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能任务管理系统</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      background: #f0f2f5;
+      color: #1f2329;
+      padding: 32px 16px;
+    }
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 26px; margin-bottom: 20px; text-align: center; }
+
+    .add-form {
+      display: flex;
+      gap: 10px;
+      background: #fff;
+      padding: 16px;
+      border-radius: 14px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .add-form input[type="text"] {
+      flex: 1;
+      min-width: 180px;
+      padding: 10px 12px;
+      border: 1px solid #dcdfe6;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+    }
+    .add-form input[type="text"]:focus { border-color: #667eea; }
+    .add-form select, .filter-bar select {
+      padding: 10px 12px;
+      border: 1px solid #dcdfe6;
+      border-radius: 8px;
+      font-size: 15px;
+      background: #fff;
+      outline: none;
+    }
+    .btn {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.88; }
+    .btn-primary { background: #667eea; color: #fff; }
+
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .stats { font-size: 14px; color: #646a73; }
+
+    .task-list { display: flex; flex-direction: column; gap: 10px; }
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #fff;
+      padding: 14px 16px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+    .task-main { flex: 1; min-width: 0; }
+    .task-title { font-size: 16px; word-break: break-all; }
+    .task-item.completed .task-title {
+      text-decoration: line-through;
+      color: #9aa0a6;
+    }
+    .task-meta { margin-top: 4px; font-size: 13px; color: #646a73; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-right: 6px;
+    }
+    .badge-高 { background: #fde2e2; color: #d93025; }
+    .badge-中 { background: #fef3d6; color: #b26a00; }
+    .badge-低 { background: #e2f0e6; color: #1e8e3e; }
+
+    .task-actions { display: flex; gap: 8px; }
+    .btn-toggle { background: #eef1ff; color: #4a5bd0; }
+    .btn-delete { background: #fde2e2; color: #d93025; }
+
+    .empty {
+      text-align: center;
+      color: #9aa0a6;
+      padding: 40px 0;
+      font-size: 15px;
+    }
+    .error-tip {
+      background: #fde2e2;
+      color: #d93025;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      font-size: 14px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📋 智能任务管理系统</h1>
+
+    <div id="errorTip" class="error-tip"></div>
+
+    <form class="add-form" id="addForm">
+      <input type="text" id="titleInput" placeholder="请输入任务标题…" maxlength="100" required />
+      <select id="prioritySelect">
+        <option value="高">高优先级</option>
+        <option value="中" selected>中优先级</option>
+        <option value="低">低优先级</option>
+      </select>
+      <button type="submit" class="btn btn-primary">添加任务</button>
+    </form>
+
+    <div class="filter-bar">
+      <label for="filterSelect" style="font-size:14px;color:#646a73;">按优先级筛选：</label>
+      <select id="filterSelect">
+        <option value="全部">全部</option>
+        <option value="高">高</option>
+        <option value="中">中</option>
+        <option value="低">低</option>
+      </select>
+      <span class="stats" id="stats"></span>
+    </div>
+
+    <div class="task-list" id="taskList"></div>
+  </div>
+
+  <script>
+    const addForm = document.getElementById('addForm');
+    const titleInput = document.getElementById('titleInput');
+    const prioritySelect = document.getElementById('prioritySelect');
+    const filterSelect = document.getElementById('filterSelect');
+    const taskList = document.getElementById('taskList');
+    const stats = document.getElementById('stats');
+    const errorTip = document.getElementById('errorTip');
+
+    let tasks = [];
+
+    // 转义 HTML，防止标题里的特殊字符破坏页面
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showError(msg) {
+      errorTip.textContent = msg;
+      errorTip.style.display = 'block';
+    }
+    function clearError() {
+      errorTip.style.display = 'none';
+    }
+
+    // 拉取任务列表
+    async function loadTasks() {
+      clearError();
+      try {
+        const res = await fetch('/api/tasks');
+        if (!res.ok) throw new Error('请求失败：' + res.status);
+        tasks = await res.json();
+        render();
+      } catch (err) {
+        showError('加载任务失败：' + err.message);
+      }
+    }
+
+    // 渲染页面
+    function render() {
+      const filter = filterSelect.value;
+      const visible = filter === '全部' ? tasks : tasks.filter(t => t.priority === filter);
+
+      taskList.innerHTML = '';
+
+      if (visible.length === 0) {
+        taskList.innerHTML = '<div class="empty">暂无任务，添加一条吧～</div>';
+      } else {
+        visible.forEach(task => {
+          const item = document.createElement('div');
+          item.className = 'task-item' + (task.completed ? ' completed' : '');
+
+          const created = new Date(task.created_at).toLocaleString('zh-CN');
+
+          item.innerHTML = `
+            <div class="task-main">
+              <div class="task-title">${escapeHtml(task.title)}</div>
+              <div class="task-meta">
+                <span class="badge badge-${escapeHtml(task.priority)}">${escapeHtml(task.priority)}</span>
+                ${task.completed ? '已完成' : '未完成'} · ${created}
+              </div>
+            </div>
+            <div class="task-actions">
+              <button class="btn btn-toggle" data-action="toggle" data-id="${task.id}">
+                ${task.completed ? '标为未完成' : '标为完成'}
+              </button>
+              <button class="btn btn-delete" data-action="delete" data-id="${task.id}">删除</button>
+            </div>`;
+
+          taskList.appendChild(item);
+        });
+      }
+
+      // 统计：总数 / 已完成
+      const total = tasks.length;
+      const done = tasks.filter(t => t.completed).length;
+      stats.textContent = `共 ${total} 条 · 已完成 ${done} 条`;
+    }
+
+    // 添加任务
+    addForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = titleInput.value.trim();
+      if (!title) return;
+      clearError();
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, priority: prioritySelect.value })
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || '添加失败');
+        }
+        titleInput.value = '';
+        await loadTasks();
+      } catch (err) {
+        showError('添加任务失败：' + err.message);
+      }
+    });
+
+    // 筛选变化
+    filterSelect.addEventListener('change', render);
+
+    // 事件委托：切换完成 / 删除
+    taskList.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      clearError();
+
+      if (action === 'toggle') {
+        const current = tasks.find(t => String(t.id) === String(id));
+        if (!current) return;
+        try {
+          const res = await fetch('/api/tasks/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: !current.completed })
+          });
+          if (!res.ok) throw new Error('更新失败');
+          await loadTasks();
+        } catch (err) {
+          showError('切换状态失败：' + err.message);
+        }
+      }
+
+      if (action === 'delete') {
+        if (!confirm('确定删除这条任务吗？')) return;
+        try {
+          const res = await fetch('/api/tasks/' + id, { method: 'DELETE' });
+          if (!res.ok) throw new Error('删除失败');
+          await loadTasks();
+        } catch (err) {
+          showError('删除任务失败：' + err.message);
+        }
+      }
+    });
+
+    // 首次加载
+    loadTasks();
+  </script>
+</body>
+</html>
